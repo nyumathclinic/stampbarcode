@@ -28,9 +28,18 @@ class StampBarcodeTests(unittest.TestCase):
 
     def test_output_path_for_uses_stem_and_code(self) -> None:
         source = Path("/tmp/document.pdf")
+        with TemporaryDirectory() as temp_dir:
+            with self.runner.isolated_filesystem(temp_dir=temp_dir):
+                self.assertEqual(
+                    stampbarcode.output_path_for(source, 123),
+                    Path.cwd() / "document-123.pdf",
+                )
+
+    def test_output_path_for_respects_output_dir(self) -> None:
+        source = Path("/tmp/document.pdf")
         self.assertEqual(
-            stampbarcode.output_path_for(source, 123),
-            Path("/tmp/document-123.pdf"),
+            stampbarcode.output_path_for(source, 123, Path("/tmp/out")),
+            Path("/tmp/out/document-123.pdf"),
         )
 
     def test_barcode_x_position_inside_edge(self) -> None:
@@ -135,6 +144,17 @@ class StampBarcodeTests(unittest.TestCase):
     def test_run_raises_when_input_missing(self) -> None:
         with self.assertRaises(FileNotFoundError):
             stampbarcode.run(Path("does-not-exist.pdf"), 0, 1)
+
+    def test_run_writes_to_output_dir(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.pdf"
+            output_dir = Path(temp_dir) / "outputs"
+            self.create_pdf(source)
+
+            stampbarcode.run(source, 10, 2, output_dir=output_dir)
+
+            self.assertTrue((output_dir / "source-10.pdf").exists())
+            self.assertTrue((output_dir / "source-11.pdf").exists())
 
 
 if __name__ == "__main__":

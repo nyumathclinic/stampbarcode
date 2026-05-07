@@ -21,10 +21,12 @@ python -m pytest -q
 ## Usage
 
 ```bash
-stampbarcode [--start N] [--number N] [--barwidth FLOAT] [--position inside|outside|left|right|top|bottom] [--offset OFFSET] file.pdf
+stampbarcode [--start N] [--number N] [--barwidth FLOAT] [--position inside|outside|left|right|top|bottom] [--offset OFFSET] [--output-dir DIR] file.pdf
 ```
 
-This produces files named `<stem>-<code>.pdf` in the same directory as `file.pdf`.
+By default, this produces files named `<stem>-<code>.pdf` in the current working directory.
+Use `--output-dir DIR` to write generated files to a specific directory.
+
 Each output file is a stamped copy using a Code39 barcode (with the number shown
 as human-readable text), and `--position` controls where the barcode is placed.
 The default is `inside`: left on recto pages and right on verso pages.

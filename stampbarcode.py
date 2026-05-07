@@ -65,8 +65,9 @@ def generate_codes(start: int, num: int) -> range:
     return range(start, start + num)
 
 
-def output_path_for(input_path: Path, code: int) -> Path:
-    return input_path.with_name(f"{input_path.stem}-{code}.pdf")
+def output_path_for(input_path: Path, code: int, output_dir: Path | None = None) -> Path:
+    target_dir = output_dir if output_dir is not None else Path.cwd()
+    return target_dir / f"{input_path.stem}-{code}.pdf"
 
 
 def barcode_edge_for_page(position: BarcodePosition | str, page_number: int) -> str:
@@ -230,12 +231,16 @@ def run(
     bar_width: float = BARCODE_BAR_WIDTH,
     lateral_offset: float = 0.0,
     normal_offset: float = 0.0,
+    output_dir: Path | None = None,
 ) -> None:
     if not pdf_file.exists():
         raise FileNotFoundError(f"Input file does not exist: {pdf_file}")
 
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     for code in generate_codes(start, num):
-        output_pdf = output_path_for(pdf_file, code)
+        output_pdf = output_path_for(pdf_file, code, output_dir)
         stamp_pdf(pdf_file, output_pdf, code, position, bar_width,
                   lateral_offset, normal_offset)
 
@@ -265,9 +270,18 @@ def main(
              "Normal moves along barcode axis (positive=up). "
              "Offsets are relative to barcode orientation.",
     ),
+    output_dir: Path = typer.Option(
+        None,
+        "--output-dir",
+        file_okay=False,
+        dir_okay=True,
+        writable=True,
+        resolve_path=True,
+        help="Directory for generated PDFs. Defaults to the current working directory.",
+    ),
 ) -> None:
     lateral_offset, normal_offset = parse_offset(offset)
-    run(pdf_file, start, num, position, barwidth, lateral_offset, normal_offset)
+    run(pdf_file, start, num, position, barwidth, lateral_offset, normal_offset, output_dir)
 
 
 if __name__ == "__main__":
