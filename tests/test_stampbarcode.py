@@ -28,12 +28,10 @@ class StampBarcodeTests(unittest.TestCase):
 
     def test_output_path_for_uses_stem_and_code(self) -> None:
         source = Path("/tmp/document.pdf")
-        with TemporaryDirectory() as temp_dir:
-            with self.runner.isolated_filesystem(temp_dir=temp_dir):
-                self.assertEqual(
-                    stampbarcode.output_path_for(source, 123),
-                    Path.cwd() / "document-123.pdf",
-                )
+        self.assertEqual(
+            stampbarcode.output_path_for(source, 123),
+            Path.cwd() / "document-123.pdf",
+        )
 
     def test_output_path_for_respects_output_dir(self) -> None:
         source = Path("/tmp/document.pdf")
@@ -76,15 +74,79 @@ class StampBarcodeTests(unittest.TestCase):
         self.assertEqual(stampbarcode.barcode_rotation(1, "top"), 0)
         self.assertEqual(stampbarcode.barcode_rotation(1, "bottom"), 0)
 
+    def invoke_with_source(self, *options: str):
+        with TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.pdf"
+            self.create_pdf(source)
+            return self.runner.invoke(
+                stampbarcode.app,
+                [*options, "--output-dir", str(Path(temp_dir) / "out"), str(source)],
+            )
+
     def test_cli_accepts_position_option(self) -> None:
-        result = self.runner.invoke(stampbarcode.app, ["--position", "outside", "missing.pdf"])
-        self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Input file does not exist", str(result.exception))
+        result = self.invoke_with_source("--position", "outside")
+        self.assertEqual(result.exit_code, 0, result.output)
 
     def test_cli_accepts_barwidth_option(self) -> None:
-        result = self.runner.invoke(stampbarcode.app, ["--barwidth", "1.2", "missing.pdf"])
+        result = self.invoke_with_source("--barwidth", "1.2")
+        self.assertEqual(result.exit_code, 0, result.output)
+
+    def test_cli_accepts_offset_option(self) -> None:
+        result = self.invoke_with_source("--offset", "-3.5+2.1")
+        self.assertEqual(result.exit_code, 0, result.output)
+
+    def test_cli_rejects_missing_input_as_usage_error(self) -> None:
+        result = self.runner.invoke(stampbarcode.app, ["missing.pdf"])
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("Invalid value for", result.output)
+
+    def test_cli_rejects_invalid_offset_as_usage_error(self) -> None:
+        result = self.invoke_with_source("--offset", "junk")
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("Invalid value for '--offset'", result.output)
+
+    def test_cli_rejects_negative_start(self) -> None:
+        result = self.runner.invoke(stampbarcode.app, ["--start", "-1", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Input file does not exist", str(result.exception))
+        self.assertIn("Invalid value for '--start'", result.output)
+
+    def test_cli_version_option(self) -> None:
+        result = self.runner.invoke(stampbarcode.app, ["--version"])
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("stampbarcode", result.output)
+
+    def test_parse_offset_defaults_to_zero(self) -> None:
+        self.assertEqual(stampbarcode.parse_offset(None), (0.0, 0.0))
+        self.assertEqual(stampbarcode.parse_offset(""), (0.0, 0.0))
+
+    def test_parse_offset_reads_lateral_then_normal(self) -> None:
+        self.assertEqual(stampbarcode.parse_offset("+10-5"), (10.0, -5.0))
+        self.assertEqual(stampbarcode.parse_offset("-3.5+2.1"), (-3.5, 2.1))
+        self.assertEqual(stampbarcode.parse_offset("10+0"), (10.0, 0.0))
+
+    def test_parse_offset_rejects_malformed_values(self) -> None:
+        for value in ("junk", "10", "+10", "+10-5abc", "+10-5+2"):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    stampbarcode.parse_offset(value)
+
+    def test_stamp_pdf_applies_offset_on_each_edge(self) -> None:
+        expected = {
+            stampbarcode.BarcodePosition.LEFT: "0 1 -1 0 41 317.82 cm",
+            stampbarcode.BarcodePosition.RIGHT: "0 -1 1 0 459 382.18 cm",
+            stampbarcode.BarcodePosition.TOP: "1 0 0 1 217.82 659 cm",
+            stampbarcode.BarcodePosition.BOTTOM: "1 0 0 1 217.82 13 cm",
+        }
+        with TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source.pdf"
+            self.create_pdf(source)
+            for position, transform in expected.items():
+                with self.subTest(position=position.value):
+                    output = Path(temp_dir) / f"{position.value}.pdf"
+                    stampbarcode.stamp_pdf(
+                        source, output, 123, position, lateral_offset=10, normal_offset=-5
+                    )
+                    self.assertIn(transform, self.read_page_content(output, 1))
 
     def test_cli_rejects_non_positive_num(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--number", "0", "input.pdf"])

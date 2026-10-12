@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import re
 from enum import Enum
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import typer
@@ -49,7 +50,7 @@ def parse_offset(offset_str: str | None) -> tuple[float, float]:
     
     # Parse format: [+-][number][+-][number]
     # Find the second sign to split lateral and normal offsets
-    match = re.match(r'([+-]?\d+(?:\.\d+)?)\s*([+-]\d+(?:\.\d+)?)', offset_str.strip())
+    match = re.fullmatch(r'([+-]?\d+(?:\.\d+)?)\s*([+-]\d+(?:\.\d+)?)', offset_str.strip())
     if not match:
         raise ValueError(
             f"Invalid offset format: '{offset_str}'. Expected format: [+-]number[+-]number "
@@ -216,8 +217,7 @@ def stamp_pdf(
             lateral_offset, normal_offset
         )
         overlay_page = PdfReader(overlay_stream).pages[0]
-        page.merge_page(overlay_page)
-        writer.add_page(page)
+        writer.add_page(page).merge_page(overlay_page)
 
     with output_pdf.open("wb") as output_stream:
         writer.write(output_stream)
@@ -245,16 +245,31 @@ def run(
                   lateral_offset, normal_offset)
 
 
+def version_callback(value: bool) -> None:
+    if value:
+        try:
+            typer.echo(f"stampbarcode {version('stampbarcode')}")
+        except PackageNotFoundError:
+            typer.echo("stampbarcode (version unknown: not installed)")
+        raise typer.Exit()
+
+
 @app.command()
 def main(
-    pdf_file: Path = typer.Argument(..., help="Source PDF file"),
-    start: int = typer.Option(0, "--start", help="Starting barcode number"),
+    pdf_file: Path = typer.Argument(
+        ...,
+        exists=True,
+        dir_okay=False,
+        readable=True,
+        help="Source PDF file",
+    ),
+    start: int = typer.Option(0, "--start", min=0, help="Starting barcode number"),
     num: int = typer.Option(1, "-n", "--number", min=1, help="How many stamped files to produce"),
     barwidth: float = typer.Option(
         BARCODE_BAR_WIDTH,
         "--barwidth",
         min=0.01,
-        help="Barcode bar width",
+        help="Barcode bar width in points",
     ),
     position: BarcodePosition = typer.Option(
         BarcodePosition.INSIDE,
@@ -265,7 +280,7 @@ def main(
     offset: str = typer.Option(
         None,
         "--offset",
-        help="Barcode offset as [+-]lateral[+-]normal (e.g., '+10-5' or '-3.5+2.1'). "
+        help="Barcode offset in points as [+-]lateral[+-]normal (e.g., '+10-5' or '-3.5+2.1'). "
              "Lateral moves perpendicular to barcode axis (positive=right). "
              "Normal moves along barcode axis (positive=up). "
              "Offsets are relative to barcode orientation.",
@@ -279,8 +294,18 @@ def main(
         resolve_path=True,
         help="Directory for generated PDFs. Defaults to the current working directory.",
     ),
+    show_version: bool = typer.Option(
+        False,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show the version and exit.",
+    ),
 ) -> None:
-    lateral_offset, normal_offset = parse_offset(offset)
+    try:
+        lateral_offset, normal_offset = parse_offset(offset)
+    except ValueError as error:
+        raise typer.BadParameter(str(error), param_hint="'--offset'") from error
     run(pdf_file, start, num, position, barwidth, lateral_offset, normal_offset, output_dir)
 
 
