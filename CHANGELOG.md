@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (October 17, 2026)
 
 First release on PyPI.
 
