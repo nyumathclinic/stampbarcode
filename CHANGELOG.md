@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `--checksum` (`standard`, `none`, `skip-space`) to control the Code 39 check character, so numbers whose check character would be a space can be avoided.
+
 ## 0.1.0 (October 17, 2026)
 
 First release on PyPI.

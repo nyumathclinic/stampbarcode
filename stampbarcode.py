@@ -26,6 +26,21 @@ class BarcodePosition(str, Enum):
     BOTTOM = "bottom"
 
 
+class ChecksumMode(str, Enum):
+    STANDARD = "standard"
+    NONE = "none"
+    SKIP_SPACE = "skip-space"
+
+
+# Code 39 character set in mod-43 checksum order (matches reportlab's ordering).
+CODE39_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%"
+
+
+def code39_check_char(code: int) -> str:
+    """Return the mod-43 Code 39 check character for a non-negative integer code."""
+    return CODE39_CHARS[sum(int(digit) for digit in str(code)) % 43]
+
+
 def parse_offset(offset_str: str | None) -> tuple[float, float]:
     """Parse offset string in format [+-][number][+-][number].
     
@@ -62,8 +77,23 @@ def parse_offset(offset_str: str | None) -> tuple[float, float]:
     return (lateral, normal)
 
 
-def generate_codes(start: int, num: int) -> range:
-    return range(start, start + num)
+def generate_codes(
+    start: int, num: int, mode: ChecksumMode | str = ChecksumMode.STANDARD
+) -> list[int]:
+    """Return `num` codes starting at `start`.
+
+    With `ChecksumMode.SKIP_SPACE`, codes whose check character would be a
+    space are skipped, so the result may not be contiguous.
+    """
+    if ChecksumMode(mode) != ChecksumMode.SKIP_SPACE:
+        return list(range(start, start + num))
+    codes: list[int] = []
+    code = start
+    while len(codes) < num:
+        if code39_check_char(code) != " ":
+            codes.append(code)
+        code += 1
+    return codes
 
 
 def output_path_for(input_path: Path, code: int, output_dir: Path | None = None) -> Path:
@@ -133,6 +163,7 @@ def create_overlay(
     bar_width: float = BARCODE_BAR_WIDTH,
     lateral_offset: float = 0.0,
     normal_offset: float = 0.0,
+    checksum: bool = True,
 ) -> io.BytesIO:
     """Create PDF overlay with barcode.
     
@@ -152,6 +183,7 @@ def create_overlay(
         barWidth=bar_width,
         barHeight=BARCODE_BAR_HEIGHT,
         stop=1,
+        checksum=int(checksum),
         humanReadable=True,
     )
 
@@ -203,6 +235,7 @@ def stamp_pdf(
     bar_width: float = BARCODE_BAR_WIDTH,
     lateral_offset: float = 0.0,
     normal_offset: float = 0.0,
+    checksum: bool = True,
 ) -> None:
     from pypdf import PdfReader, PdfWriter
 
@@ -214,7 +247,7 @@ def stamp_pdf(
         height = float(page.mediabox.height)
         overlay_stream = create_overlay(
             width, height, code, page_number, position, bar_width,
-            lateral_offset, normal_offset
+            lateral_offset, normal_offset, checksum
         )
         overlay_page = PdfReader(overlay_stream).pages[0]
         writer.add_page(page).merge_page(overlay_page)
@@ -232,6 +265,7 @@ def run(
     lateral_offset: float = 0.0,
     normal_offset: float = 0.0,
     output_dir: Path | None = None,
+    checksum_mode: ChecksumMode = ChecksumMode.STANDARD,
 ) -> None:
     if not pdf_file.exists():
         raise FileNotFoundError(f"Input file does not exist: {pdf_file}")
@@ -239,10 +273,11 @@ def run(
     if output_dir is not None:
         output_dir.mkdir(parents=True, exist_ok=True)
 
-    for code in generate_codes(start, num):
+    checksum = ChecksumMode(checksum_mode) != ChecksumMode.NONE
+    for code in generate_codes(start, num, checksum_mode):
         output_pdf = output_path_for(pdf_file, code, output_dir)
         stamp_pdf(pdf_file, output_pdf, code, position, bar_width,
-                  lateral_offset, normal_offset)
+                  lateral_offset, normal_offset, checksum)
 
 
 def version_callback(value: bool) -> None:
@@ -285,6 +320,13 @@ def main(
              "Normal moves along barcode axis (positive=up). "
              "Offsets are relative to barcode orientation.",
     ),
+    checksum_mode: ChecksumMode = typer.Option(
+        ChecksumMode.STANDARD,
+        "--checksum",
+        case_sensitive=False,
+        help="Code 39 check character: standard (always append), none (omit), "
+             "or skip-space (skip numbers whose check character would be a space).",
+    ),
     output_dir: Path = typer.Option(
         None,
         "--output-dir",
@@ -306,7 +348,8 @@ def main(
         lateral_offset, normal_offset = parse_offset(offset)
     except ValueError as error:
         raise typer.BadParameter(str(error), param_hint="'--offset'") from error
-    run(pdf_file, start, num, position, barwidth, lateral_offset, normal_offset, output_dir)
+    run(pdf_file, start, num, position, barwidth, lateral_offset, normal_offset, output_dir,
+        checksum_mode)
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ uv tool install stampbarcode
 ## Usage
 
 ```bash
-stampbarcode [--start N] [--number N] [--barwidth FLOAT] [--position inside|outside|left|right|top|bottom] [--offset OFFSET] [--output-dir DIR] file.pdf
+stampbarcode [--start N] [--number N] [--barwidth FLOAT] [--position inside|outside|left|right|top|bottom] [--offset OFFSET] [--checksum standard|none|skip-space] [--output-dir DIR] file.pdf
 ```
 
 For example, to make three numbered copies of an exam:
@@ -44,6 +44,19 @@ Other position modes are `outside`, `left`, `right`, `top`, and `bottom`.
 
 The first generated barcode is exactly `--start`, and `--number` controls how many
 consecutive codes are produced.
+
+### Check Character
+
+Code 39 barcodes carry a mod-43 check character, which is printed after the number in the
+human-readable text. It can be a digit, a letter, or one of `- . $ / + %`, or it can be a
+**space** (this happens whenever the digits of the number add up to 38, e.g. `29999`).
+A space check character can't be seen and is easily trimmed by downstream software.
+`--checksum` controls this:
+
+- `standard` (default): always append the check character.
+- `none`: omit the check character entirely.
+- `skip-space`: keep the check character, but skip any number whose check character would
+  be a space. `--number` copies are still produced, but the numbering may have gaps.
 
 ### Barcode Position Offsets
 
