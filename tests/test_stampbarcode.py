@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -6,6 +7,14 @@ import stampbarcode
 from pypdf import PdfReader
 from reportlab.pdfgen import canvas
 from typer.testing import CliRunner
+
+
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(output: str) -> str:
+    """Strip ANSI color codes, which Rich adds when it detects CI (e.g. GITHUB_ACTIONS)."""
+    return ANSI_ESCAPE.sub("", output)
 
 
 class StampBarcodeTests(unittest.TestCase):
@@ -74,7 +83,7 @@ class StampBarcodeTests(unittest.TestCase):
     def test_cli_rejects_invalid_checksum(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--checksum", "bogus", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid value for '--checksum'", result.output)
+        self.assertIn("Invalid value for '--checksum'", plain(result.output))
 
     def test_run_skip_space_writes_non_contiguous_codes(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -164,22 +173,22 @@ class StampBarcodeTests(unittest.TestCase):
     def test_cli_rejects_missing_input_as_usage_error(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["missing.pdf"])
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("Invalid value for", result.output)
+        self.assertIn("Invalid value for", plain(result.output))
 
     def test_cli_rejects_invalid_offset_as_usage_error(self) -> None:
         result = self.invoke_with_source("--offset", "junk")
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("Invalid value for '--offset'", result.output)
+        self.assertIn("Invalid value for '--offset'", plain(result.output))
 
     def test_cli_rejects_negative_start(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--start", "-1", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid value for '--start'", result.output)
+        self.assertIn("Invalid value for '--start'", plain(result.output))
 
     def test_cli_version_option(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--version"])
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("stampbarcode", result.output)
+        self.assertIn("stampbarcode", plain(result.output))
 
     def test_parse_offset_defaults_to_zero(self) -> None:
         self.assertEqual(stampbarcode.parse_offset(None), (0.0, 0.0))
@@ -217,17 +226,17 @@ class StampBarcodeTests(unittest.TestCase):
     def test_cli_rejects_non_positive_num(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--number", "0", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid value for", result.output)
+        self.assertIn("Invalid value for", plain(result.output))
 
     def test_cli_rejects_too_small_barwidth(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--barwidth", "0", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid value for '--barwidth'", result.output)
+        self.assertIn("Invalid value for '--barwidth'", plain(result.output))
 
     def test_cli_rejects_invalid_position(self) -> None:
         result = self.runner.invoke(stampbarcode.app, ["--position", "middle", "input.pdf"])
         self.assertNotEqual(result.exit_code, 0)
-        self.assertIn("Invalid value for '--position'", result.output)
+        self.assertIn("Invalid value for '--position'", plain(result.output))
 
     def test_stamp_pdf_places_inside_barcodes_on_inner_edges(self) -> None:
         with TemporaryDirectory() as temp_dir:
